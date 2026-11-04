@@ -26,12 +26,25 @@
         contentOnly: "{{ ocp4_workload_showroom_content_only | bool | string | lower }}"
         zero_touch_bundle: "{{ ocp4_workload_showroom_zero_touch_bundle }}"
         zero_touch_ui_enabled: "{{ ocp4_workload_showroom_zero_touch_ui_enabled | string | lower }}"
+        enableDevMode: >-
+          {{ (ocp4_workload_showroom_antora_enable_dev_mode | bool
+              or ocp4_workload_showroom_enable_dev_mode | bool)
+             | string | lower }}
+        nookbagEnableDevMode: >-
+          {{ (ocp4_workload_showroom_nookbag_enable_dev_mode | bool
+              or ocp4_workload_showroom_enable_dev_mode | bool)
+             | string | lower }}
+
+      antora:
+        uiBundleUrl: "{{ ocp4_workload_showroom_antora_ui_bundle_url }}"
 
       guid: "{{ guid }}"
+      common_password: "{{ common_password | default('') }}"
       satellite:
         url: "{{ satellite_url | default('') }}"
         org: "{{ satellite_org | default('') }}"
         activationkey: "{{ satellite_activationkey | default('') }}"
+        script: "{{ satellite_script | default('') }}"
       deployer:
         domain: "{{ _deployer_domain }}"
         registry_pull_token: "{{ registry_pull_token | default('') }}"
@@ -131,9 +144,11 @@
         tokengenserver: "localhost:8081"
       runtime_automation:
         setup: "{{ ('false' if ocp4_workload_showroom_automation_disable | bool  else 'true') | string | lower }}"
+        environment_variables: "{{ showroom_runtime_automation_environment_variables }}"
       setup_automation:
         setup: "{{ ('false' if ocp4_workload_showroom_automation_disable | bool  else 'true') | string | lower }}"
         vault_password: "{{ _showroom_user_data.vault_password | default('') }}"
+        environment_variables: "{{ showroom_setup_automation_environment_variables }}"
   register: r_helm_templates
 
 - name: Deploy rendered manifests to OpenShift
@@ -169,7 +184,7 @@
     namespace: "{{ _showroom_namespace }}"
     name: "{{ _showroom_pod_name }}"
   register: r_pod_status
-  retries: 180
+  retries: "{{ ocp4_workload_showroom_wait_retries | int }}"
   delay: 5
   until:
     - r_pod_status.resources | length > 0

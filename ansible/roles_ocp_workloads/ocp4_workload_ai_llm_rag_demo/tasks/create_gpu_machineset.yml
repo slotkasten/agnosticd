@@ -1,0 +1,48 @@
+---
+# Duplicated from the rag-llm-gitops pattern repo
+# (ansible/playbooks/create-gpu-machineset.yaml) so the workload role is
+# self-contained and does not need to shell out to a nested playbook.
+
+- name: "[create-gpu-machine-set] Get the infra-id for the cluster"
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: infrastructure
+    name: cluster
+  register: infraInfo
+
+- name: "[create-gpu-machine-set] Get Platform Name"
+  ansible.builtin.set_fact:
+    cloudProvider: "{{ infraInfo.resources[0].status.platform | lower }}"
+
+- name: "[create-gpu-machine-set] Set fact Region"
+  ansible.builtin.set_fact:
+    cloudRegion: "{{ infraInfo.resources[0].status.platformStatus[cloudProvider].region }}"
+
+- name: "[create-gpu-machine-set] Search for worker MachineSets"
+  kubernetes.core.k8s_info:
+    api: machine.openshift.io/v1beta1
+    kind: Machine
+    namespace: openshift-machine-api
+    label_selectors:
+      - "machine.openshift.io/cluster-api-machine-type=worker"
+  register: machines
+
+- name: "[create-gpu-machine-set] Setting facts to be used in MachineSet template"
+  ansible.builtin.set_fact:
+    clusterId: "{{ infraInfo.resources[0].status.infrastructureName }}"
+    instanceAmi: "{{ machines.resources[0].spec.providerSpec.value.ami.id }}"
+    cacheable: no
+    securityGroups: "{{ machines.resources[0].spec.providerSpec.value.securityGroups }}"
+    subnets: "{{ machines.resources[0].spec.providerSpec.value.subnet }}"
+    tags: "{{ machines.resources[0].spec.providerSpec.value.tags }}"
+    cloudAvailabilityZone: "{{ machines.resources[0].spec.providerSpec.value.placement.availabilityZone }}"
+
+- name: "[create-gpu-machine-set] Generate machineset"
+  ansible.builtin.template:
+    src: gpu-machineset.j2
+    dest: /tmp/gpu-machineset.yaml
+
+- name: "[create-gpu-machine-set] Apply machineset to cluster {{ clusterId }}"
+  kubernetes.core.k8s:
+    state: present
+    src: /tmp/gpu-machineset.yaml
